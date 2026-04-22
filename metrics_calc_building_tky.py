@@ -37,8 +37,11 @@ from rasterio.features import shapes
 from rasterio.vrt import WarpedVRT
 from rasterio.windows import from_bounds, Window
 from shapely.geometry import shape
-from shapely.ops import make_valid
 from shapely.prepared import prep
+try:
+    from shapely import make_valid          # Shapely >= 2.0
+except ImportError:
+    from shapely.validation import make_valid  # Shapely 1.8 – 1.x
 
 # ---------------------------------------------------------------------------
 # Logging
