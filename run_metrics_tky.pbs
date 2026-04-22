@@ -1,0 +1,65 @@
+#!/bin/bash
+# =============================================================================
+# run_metrics_tky.pbs
+# PBS job script for metrics_calc_building_tky.py
+#
+# Submit with:  qsub run_metrics_tky.pbs
+#          or:  qsub -v CONFIG=my_other_config.yaml run_metrics_tky.pbs
+# =============================================================================
+
+# --------------- Resource requests -------------------------------------------
+#PBS -N metrics_tky
+#PBS -l ncpus=16
+#PBS -l mem=64gb
+#PBS -l walltime=24:00:00
+#PBS -q qamd_wfly
+#PBS -P eos_sangho.yun
+#PBS -j oe
+#PBS -o logs/metrics_tky.log
+
+# --------------- Optional email notifications (remove ## to enable) ----------
+##PBS -M your_email@example.com
+##PBS -m abe
+
+# =============================================================================
+# Environment setup
+# =============================================================================
+
+cd "${PBS_O_WORKDIR}" || { echo "ERROR: could not cd to PBS_O_WORKDIR"; exit 1; }
+mkdir -p logs
+
+echo "============================================================"
+echo "Job:         ${PBS_JOBID}"
+echo "Node(s):     $(cat ${PBS_NODEFILE} | sort | uniq | tr '\n' ' ')"
+echo "Working dir: ${PWD}"
+echo "Start time:  $(date)"
+echo "============================================================"
+
+# ---------------------------------------------------------------------------
+# Activate conda environment
+# ---------------------------------------------------------------------------
+module purge
+source /eos-rs/miniconda3/etc/profile.d/conda.sh && conda activate metrics_env
+
+# ---------------------------------------------------------------------------
+# Config file — override at submit time with:  qsub -v CONFIG=alt_config.yaml
+# ---------------------------------------------------------------------------
+CONFIG="${CONFIG:-config_building_tky.yaml}"
+
+echo "Config file: ${CONFIG}"
+echo "Python:      $(which python3)  ($(python3 --version 2>&1))"
+echo "------------------------------------------------------------"
+
+# =============================================================================
+# Run the pipeline
+# =============================================================================
+
+python3 metrics_calc_building_tky.py --config "${CONFIG}"
+EXIT_CODE=$?
+
+echo "------------------------------------------------------------"
+echo "End time:   $(date)"
+echo "Exit code:  ${EXIT_CODE}"
+echo "============================================================"
+
+exit ${EXIT_CODE}

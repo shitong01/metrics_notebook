@@ -1,0 +1,117 @@
+# =============================================================================
+# config_building_tky.yaml
+# =============================================================================
+# Turkiye building-damage validation pipeline configuration.
+# Run from the metrics_notebook directory:
+#
+#   python metrics_calc_building_tky.py --config config_building_tky.yaml
+#
+# All paths are relative to the directory where the script is launched unless
+# you supply an absolute path.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Pipeline control
+# -----------------------------------------------------------------------------
+steps:
+  label_ground_truth: true   # Step 1: translate ACIKLAMA labels → binary
+  threshold_sweep:    true   # Step 2: sweep raster thresholds, compute metrics
+  plot:               true   # Step 3: save plots to PNG
+
+# -----------------------------------------------------------------------------
+# STEP 1  –  Label the Turkiye ground-truth GeoPackage
+#
+# The input GeoPackage (Basarsoft/Microsoft footprints) already has one row
+# per building with a Turkish damage label.  This step translates those labels
+# (via Turkiye/translations.py) and filters out inaccessible buildings.
+# -----------------------------------------------------------------------------
+step1:
+  # Input GeoPackage — building polygons with ACIKLAMA column
+  valid_polygon: "./Turkiye/validation/Basarsoft_to_MicrosoftFootprints-allocations_buf15m_36WE38_37SN38.gpkg"
+
+  # Column in the GeoPackage that holds the Turkish damage label
+  pts_class_col: "ACIKLAMA"
+
+  # Unique building ID column
+  bld_id_col: "id"
+
+  # English class names (as produced by translations.py) that map to "Damaged".
+  # "Slightly damaged" is included here — remove it to treat as Undamaged.
+  damaged_classes:
+    - "Slightly damaged"
+    - "Heavily damaged"
+    - "To be demolished urgently"
+    - "Collapsed"
+
+  # English class names that map to "Undamaged".
+  # Everything not in damaged_classes or undamaged_classes becomes "Unknown"
+  # and is excluded from the validation set.
+  undamaged_classes:
+    - "Undamaged"
+
+  # Output GeoPackage — annotated with damage_class, damage_binary, area_m2
+  out_gpkg: "./Turkiye/validation/Basarsoft_to_MicrosoftFootprints_Binary.gpkg"
+
+# -----------------------------------------------------------------------------
+# STEP 2  –  Raster threshold sweep
+# -----------------------------------------------------------------------------
+step2:
+  # Input GeoPackage.  If step1 is disabled, point this at a pre-existing file.
+  input_gpkg: "./Turkiye/validation/Basarsoft_to_MicrosoftFootprints_Binary.gpkg"
+
+  # Column names in the input GeoPackage
+  gt_col:   "damage_binary"   # binary ground-truth column ("Damaged"/"Undamaged")
+  id_col:   "id"              # unique building ID
+  area_col: "area_m2"         # building area in m²
+
+  # ---- Two-threshold interaction ----
+  # A pixel is counted as 'damaged' if its raster value >= raster threshold T.
+  # A building is classified as 'Damaged' if the sum of its damaged-pixel area
+  # divided by its total area >= area_frac_threshold.
+  area_frac_threshold: 0.30
+
+  # Raster probability threshold sweep  (start, stop inclusive, step)
+  thresholds:
+    start: 0.50
+    stop:  1.00
+    step:  0.02
+
+  # List of damage-probability rasters to evaluate
+  target_raster_paths:
+    - "Turkiye/TD021/20230210.wprobs.geo.tif"
+    - "Turkiye/TD021/20230210_ele.wprobs.geo.tif"
+
+  # Raster band index (1-based)
+  band: 1
+
+  # Directory for cached pixel-overlap tables.
+  # Delete or rename this directory to force re-computation.
+  cache_dir: "./Turkiye/validation_overlap"
+
+  # Set to true to write a per-threshold GeoPackage of building predictions.
+  # Produces (num_rasters × num_thresholds) files — can be large.
+  save_per_threshold: false
+  thresholded_dir: "./Turkiye/thresholded"
+
+  # Output CSV — one row per (raster, threshold)
+  out_csv: "./threshold_sweep_metrics_turkiye.csv"
+
+# -----------------------------------------------------------------------------
+# STEP 3  –  Plotting
+# -----------------------------------------------------------------------------
+step3:
+  # CSV produced by Step 2.  If step2 is disabled, point this at an existing file.
+  input_csv: "./threshold_sweep_metrics_turkiye.csv"
+
+  # Directory where PNG plots will be saved
+  out_dir: "./Turkiye/plots"
+
+  # Axis limits for threshold plots
+  xlim: [0.5, 1.0]
+  ylim: [0.3, 0.9]
+
+  # Color mapping: any substring of a raster filename → matplotlib color
+  # Rasters not matching any key default to "red"
+  color_map:
+    ele:    "cyan"
+    wprobs: "orange"
