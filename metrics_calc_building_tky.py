@@ -22,6 +22,7 @@ Steps (each toggled in the config file):
 """
 
 import argparse
+import hashlib
 import importlib.util
 import logging
 import os
@@ -161,6 +162,16 @@ def run_step1(cfg: dict) -> None:
     log.info("  Saved to %s", out_gpkg)
 
 
+def _raster_cache_key(raster_path: str, chunk: int = 1 << 20) -> str:
+    """Content-based cache key: sha256 of file size + first chunk of bytes."""
+    p = Path(raster_path)
+    h = hashlib.sha256()
+    h.update(str(p.stat().st_size).encode())
+    with open(p, "rb") as f:
+        h.update(f.read(chunk))
+    return h.hexdigest()[:16]
+
+
 # ===========================================================================
 # STEP 2 – Raster threshold sweep (with overlap-table caching)
 # ===========================================================================
@@ -196,12 +207,11 @@ def _compute_pixel_overlap_table(
     bld_m : GeoDataFrame  — buildings re-projected to UTM with area_m2
     ov    : DataFrame     — columns [id_col, "value", "overlap_m2"]
     """
-    raster_base = Path(raster_path).stem
-
     if cache_dir:
+        raster_key = _raster_cache_key(raster_path)
         Path(cache_dir).mkdir(parents=True, exist_ok=True)
-        bld_m_file = Path(cache_dir) / f"{raster_base}_bldm.gpkg"
-        ov_file    = Path(cache_dir) / f"{raster_base}_ov.csv"
+        bld_m_file = Path(cache_dir) / f"{raster_key}_bldm.gpkg"
+        ov_file    = Path(cache_dir) / f"{raster_key}_ov.csv"
 
         if bld_m_file.exists() and ov_file.exists():
             log.info("    Loading cached overlap table from %s", cache_dir)
@@ -432,6 +442,12 @@ def run_step3(cfg: dict) -> None:
     sweep_df = pd.read_csv(input_csv)
     log.info("  Loaded sweep CSV: %d rows", len(sweep_df))
 
+    selected_rasters = cfg["step2"]["target_raster_paths"]
+    before = len(sweep_df)
+    sweep_df = sweep_df[sweep_df["raster"].isin(selected_rasters)].copy()
+    log.info("  Filtered to step2 rasters: %d → %d rows (%d rasters)",
+             before, len(sweep_df), sweep_df["raster"].nunique())
+
     out_dir   = Path(s["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
     color_map = s.get("color_map", {})
@@ -442,6 +458,10 @@ def run_step3(cfg: dict) -> None:
         r: df.sort_values("threshold")
         for r, df in sweep_df.groupby("raster")
     }
+
+    raster_names = list(grouped.keys())
+    _cmap = plt.cm.get_cmap("tab10", max(len(raster_names), 1))
+    auto_colors = {name: _cmap(i) for i, name in enumerate(raster_names)}
 
     # Count-based and area-based variants for each metric
     plots = [
@@ -472,11 +492,11 @@ def run_step3(cfg: dict) -> None:
         for raster_name, df_r in grouped.items():
             color = next(
                 (c for k, c in color_map.items() if k in raster_name),
-                "red",
+                auto_colors[raster_name],
             )
             marker = "x" if "mask" in raster_name else "o"
             ax.plot(df_r["threshold"], df_r[col],
-                    marker=marker, color=color, label=raster_name)
+                    marker=marker, markersize=3, color=color, label=raster_name)
 
         ax.set_xlabel("Raster threshold", color=TEXT_COLOR)
         ax.set_ylabel("Score",            color=TEXT_COLOR)

@@ -15,7 +15,7 @@
 # -----------------------------------------------------------------------------
 steps:
   label_ground_truth: true   # Step 1: translate ACIKLAMA labels → binary
-  threshold_sweep:    true   # Step 2: sweep raster thresholds, compute metrics
+  threshold_sweep:    true  # Step 2: sweep raster thresholds, compute metrics
   plot:               true   # Step 3: save plots to PNG
 
 # -----------------------------------------------------------------------------
@@ -38,7 +38,6 @@ step1:
   # English class names (as produced by translations.py) that map to "Damaged".
   # "Slightly damaged" is included here — remove it to treat as Undamaged.
   damaged_classes:
-    - "Slightly damaged"
     - "Heavily damaged"
     - "To be demolished urgently"
     - "Collapsed"
@@ -48,6 +47,7 @@ step1:
   # and is excluded from the validation set.
   undamaged_classes:
     - "Undamaged"
+    - "Slightly damaged"
 
   # Output GeoPackage — annotated with damage_class, damage_binary, area_m2
   out_gpkg: "./Turkiye/validation/Basarsoft_to_MicrosoftFootprints_Binary.gpkg"
@@ -72,14 +72,20 @@ step2:
 
   # Raster probability threshold sweep  (start, stop inclusive, step)
   thresholds:
-    start: 0.50
+    start: 0.20
     stop:  1.00
     step:  0.02
 
   # List of damage-probability rasters to evaluate
   target_raster_paths:
+#    - "Turkiye/TD021/20230210.isce2_bilinear.wprobs.geo.tif"
+    - "Turkiye/TD021/20230210.wprobs.cubic.geo.tif"
     - "Turkiye/TD021/20230210.wprobs.geo.tif"
+    - "Turkiye/TD021/20230210_GSLC_30m_resampled.wprobs.geo.tif"
     - "Turkiye/TD021/20230210_ele.wprobs.geo.tif"
+    - "Turkiye/TD021/geo_mpy_20230210.wprobs.tif"
+    - "Turkiye/TD021/20230210.wprobs_30m_ap_60.geo.tif"
+
 
   # Raster band index (1-based)
   band: 1
@@ -104,14 +110,15 @@ step3:
   input_csv: "./threshold_sweep_metrics_turkiye.csv"
 
   # Directory where PNG plots will be saved
-  out_dir: "./Turkiye/plots"
+  out_dir: "./Turkiye/plots/td021"
 
   # Axis limits for threshold plots
-  xlim: [0.5, 1.0]
-  ylim: [0.3, 0.9]
+  xlim: [0.2, 1.0]
+  ylim: [0.0, 0.9]
 
   # Color mapping: any substring of a raster filename → matplotlib color
   # Rasters not matching any key default to "red"
-  color_map:
-    ele:    "cyan"
-    wprobs: "orange"
+#  color_map:
+   # ele:    "cyan"
+   # mpy: "orange"
+   

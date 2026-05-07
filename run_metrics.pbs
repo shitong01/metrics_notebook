@@ -1,31 +1,42 @@
 #!/bin/bash
 # =============================================================================
-# run_metrics_tky.pbs
-# PBS job script for metrics_calc_building_tky.py
+# run_metrics.pbs
+# PBS job script for metrics_calc.py
 #
-# Submit with:  qsub run_metrics_tky.pbs
-#          or:  qsub -v CONFIG=my_other_config.yaml run_metrics_tky.pbs
+# Submit with:  qsub run_metrics.pbs
+#          or:  qsub -v CONFIG=my_other_config.yaml run_metrics.pbs
 # =============================================================================
 
-# --------------- Resource requests -------------------------------------------
-#PBS -N metrics_tky
+# --------------- Resource requests (edit to match your cluster) ---------------
+# Job name
+#PBS -N metrics_calc
+# 1 node, 8 processor-cores per node
 #PBS -l ncpus=2
-#PBS -l mem=16gb
+# Max walltime  hh:mm:ss
 #PBS -l walltime=24:00:00
+# Queue name — change to your cluster's queue
 #PBS -q qintel_wfly
+# Project / account code — change to your project code
 #PBS -P eos_sangho.yun
+# Merge stdout + stderr into one log file
 #PBS -j oe
-#PBS -o logs/metrics_tky.log
+# Log file path (the logs/ directory is created at runtime)
+#PBS -o logs/metrics_calc.log
 
-# --------------- Optional email notifications (remove ## to enable) ----------
+# --------------- Optional email notifications (remove ## to enable) -----------
+# Email address
 ##PBS -M your_email@example.com
+# Notify on: a=aborted, b=begin, e=end
 ##PBS -m abe
 
 # =============================================================================
 # Environment setup
 # =============================================================================
 
+# Change to the directory where qsub was called
 cd "${PBS_O_WORKDIR}" || { echo "ERROR: could not cd to PBS_O_WORKDIR"; exit 1; }
+
+# Create the logs directory if it doesn't exist yet
 mkdir -p logs
 
 echo "============================================================"
@@ -36,15 +47,29 @@ echo "Start time:  $(date)"
 echo "============================================================"
 
 # ---------------------------------------------------------------------------
-# Activate conda environment
+# Activate your Python environment — choose ONE of the blocks below and
+# uncomment it.  Delete the others.
 # ---------------------------------------------------------------------------
+
+# -- Option A: conda --------------------------------------------------------
 module purge
 source /eos-rs/miniconda3/etc/profile.d/conda.sh && conda activate metrics_env
+# -- Option B: module + venv ------------------------------------------------
+# module load python/3.11        # ← adjust module name for your cluster
+# source /path/to/venv/bin/activate
+
+# -- Option C: module only (system Python with all packages installed) -------
+# module load python/3.11        # ← adjust module name for your cluster
+
+# -- Option D: no environment management (Python already on PATH) ------------
+# (nothing to do)
 
 # ---------------------------------------------------------------------------
-# Config file — override at submit time with:  qsub -v CONFIG=alt_config.yaml
+# Config file
+# Allow overriding via  qsub -v CONFIG=...
+# Defaults to config.yaml in the working directory.
 # ---------------------------------------------------------------------------
-CONFIG="${CONFIG:-config_building_tky.yaml}"
+CONFIG="${CONFIG:-config.yaml}"
 
 echo "Config file: ${CONFIG}"
 echo "Python:      $(which python3)  ($(python3 --version 2>&1))"
@@ -54,7 +79,7 @@ echo "------------------------------------------------------------"
 # Run the pipeline
 # =============================================================================
 
-python3 metrics_calc_building_tky.py --config "${CONFIG}"
+python3 metrics_calc.py --config "${CONFIG}"
 EXIT_CODE=$?
 
 echo "------------------------------------------------------------"
@@ -63,3 +88,4 @@ echo "Exit code:  ${EXIT_CODE}"
 echo "============================================================"
 
 exit ${EXIT_CODE}
+
