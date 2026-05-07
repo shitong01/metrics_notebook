@@ -147,8 +147,8 @@ Set a step to `false` to skip it. When Step 1 is skipped, Step 2 reads from
 
 | Key | Description |
 |---|---|
-| `pts_shp` | (generic) List of point-file paths |
-| `bld_gpq` | (generic) List of building GeoParquet paths |
+| `pts_shp` | (LA Wildfires) List of point-file paths |
+| `bld_gpq` | (Overleaf) List of building GeoParquet paths |
 | `valid_polygon` | (Turkiye) Path to input GeoPackage |
 | `pts_class_col` | Column holding the raw damage label (`DAMAGE` or `ACIKLAMA`) |
 | `bld_id_col` | Unique building ID column |
@@ -197,7 +197,7 @@ building is "Damaged" if  damaged_pixel_area / building_area >= area_frac_thresh
 
 | Path | Produced by | Description |
 |---|---|---|
-| `*_w_gnd_damage.parquet` | Step 1 (generic) | Building footprints with inherited ground-truth class |
+| `*_w_gnd_damage.parquet` | Step 1 (LA Wildfires) | Building footprints with inherited ground-truth class |
 | `Turkiye/validation/*_Binary.gpkg` | Step 1 (Turkiye) | Buildings labelled Damaged / Undamaged |
 | `threshold_sweep_metrics*.csv` | Step 2 | One row per (raster, threshold) with all metrics |
 | `plots/*.png` | Step 3 (generic) | CSI and F1 threshold curves |
