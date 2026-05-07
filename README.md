@@ -47,11 +47,13 @@ conda install -c conda-forge \
 ```bash
 # Generic pipeline (LA Wildfires) — reads config.yaml by default
 python metrics_calc.py
-python metrics_calc.py --config my_config.yaml
+# Copy config.yaml for a new event, then point --config at your copy:
+python metrics_calc.py --config config_new_event.yaml
 
 # Turkiye pipeline — reads config_building_tky.yaml by default
 python metrics_calc_building_tky.py
-python metrics_calc_building_tky.py --config my_config.yaml
+# Copy config_building_tky.yaml for a new event, then point --config at your copy:
+python metrics_calc_building_tky.py --config config_new_tky_event.yaml
 ```
 
 ### Run on a PBS cluster
@@ -148,7 +150,7 @@ Set a step to `false` to skip it. When Step 1 is skipped, Step 2 reads from
 | Key | Description |
 |---|---|
 | `pts_shp` | (LA Wildfires) List of point-file paths |
-| `bld_gpq` | (Overleaf) List of building GeoParquet paths |
+| `bld_gpq` | (LA Wildfires) List of building GeoParquet paths |
 | `valid_polygon` | (Turkiye) Path to input GeoPackage |
 | `pts_class_col` | Column holding the raw damage label (`DAMAGE` or `ACIKLAMA`) |
 | `bld_id_col` | Unique building ID column |
@@ -211,5 +213,8 @@ building is "Damaged" if  damaged_pixel_area / building_area >= area_frac_thresh
 1. Copy `config.yaml` (generic) or `config_building_tky.yaml` (Turkiye) and edit paths.
 2. Set all three `steps:` flags to `true` for a fresh run.
 3. Point `step1` at your ground-truth data and `step2.target_raster_paths` at your rasters.
-4. Run locally or submit via PBS with `qsub -v CONFIG=your_new_config.yaml <script.pbs>`.
+4. Run locally: `python metrics_calc.py --config your_config.yaml` (LA) or
+   `python metrics_calc_building_tky.py --config your_config.yaml` (Turkiye).
+   Or submit via PBS: `qsub -v CONFIG=your_config.yaml run_metrics.pbs` (LA) or
+   `qsub -v CONFIG=your_config.yaml run_metrics_tky.pbs` (Turkiye).
 5. Check `logs/` for progress; results appear in the CSV and `out_dir` from `step3`.
