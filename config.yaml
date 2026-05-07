@@ -1,0 +1,137 @@
+# =============================================================================
+# metrics_calc configuration file
+# =============================================================================
+# All paths can be absolute or relative to the working directory from which
+# the script is launched (i.e., the directory where you run qsub / python).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Pipeline control — set each step to true/false to enable/disable it
+# -----------------------------------------------------------------------------
+steps:
+  merge_ground_truth: false   # Step 1: spatial-join damage points onto building footprints
+  threshold_sweep: false      # Step 2: sweep raster thresholds and compute metrics
+  plot: true                 # Step 3: save threshold-sweep plots to PNG
+
+# -----------------------------------------------------------------------------
+# STEP 1  –  Merge ground-truth damage points with building footprints
+# -----------------------------------------------------------------------------
+step1:
+  # List of ground-truth damage point files (GeoJSON, Shapefile, etc.)
+  pts_shp:
+    - "./TA64_LA_Wildfires/vectors/merged/DINS_Eaton_20250120T011501.geojson"
+    - "./TA64_LA_Wildfires/vectors/merged/DINS_Palisades_20250120T012809.geojson"
+
+  # List of building footprint files (GeoParquet)
+  bld_gpq:
+    - "./TA64_LA_Wildfires/vectors/merged/la_wildfire.parquet"
+
+  # Column in the damage-point file that contains the damage category
+  pts_class_col: "DAMAGE"
+
+  # Unique building ID column in the building-footprint file
+  bld_id_col: "id"
+
+  # Aggregation rule when multiple points fall in the same building
+  # Options: "majority"  |  "max_severity"
+  rule: "majority"
+
+  # Damage-severity ranking used when rule = "max_severity"
+  # Higher index = more severe (last item in the list wins ties)
+  severity_order:
+    - "Affected (1-9%)"
+    - "Destroyed (>50%)"
+    - "Major (26-50%)"
+    - "Minor (10-25%)"
+    - "Inaccessible"
+    - "No Damage"
+
+  # Classes mapped to "Damaged" in the binary label
+  damaged_classes:
+    - "Affected (1-9%)"
+    - "Minor (10-25%)"
+    - "Major (26-50%)"
+    - "Destroyed (>50%)"
+
+  # Classes mapped to "Undamaged" in the binary label
+  undamaged_classes:
+    - "No Damage"
+    - "Inaccessible"
+
+  # Output GeoParquet file written by Step 1 (also used as input to Step 2)
+  out_parquet: "./TA64_LA_Wildfires/vectors/eaton/building_footprint_w_gnd_damage.parquet"
+
+  # Optional: merged points output (set to null to skip writing)
+  merged_pts_out: "./TA64_LA_Wildfires/vectors/merged/merged_DINS_20250120T012809.geojson"
+
+# -----------------------------------------------------------------------------
+# STEP 2  –  Raster threshold sweep
+# -----------------------------------------------------------------------------
+step2:
+  # Path to the GeoParquet produced in Step 1.
+  # If step1 is disabled, point this at a pre-existing file.
+  input_parquet: "./TA64_LA_Wildfires/vectors/eaton/building_footprint_w_gnd_damage.parquet"
+
+  # List of damage-probability rasters to evaluate
+  target_raster_paths:
+#    - "TA64_LA_Wildfires/others/20250109.wprobs.geo.masked.tif"
+#    - "TA64_LA_Wildfires/others/20250109.wprobs.geo.tif"
+ #   - "TA64_LA_Wildfires/others/geo_20250109_mpy_br500_linear.masked.wprobs.tif"
+ #   - "TA64_LA_Wildfires/others/geo_20250109_mpy_br500_linear.wprobs.tif"
+  #  - "TA64_LA_Wildfires/others/geoisce_linear_20250109.wprobs.masked.geo.tif"
+  #  - "TA64_LA_Wildfires/others/geoisce_linear_20250109.wprobs.geo.tif"
+  #  - "TA64_LA_Wildfires/20250109_GSLC_30m_resampled.wprobs.geo.tif"
+    - "TA64_LA_Wildfires/others/20250109_ap.wprobs_1arcsec.geo.tif"
+    - "TA64_LA_Wildfires/others/20250109_ap.wprobs_4550_resampled30m.geo.tif"
+    - "TA64_LA_Wildfires/others/20250109_ap.wprobs_60m_resampled30m.geo.tif"
+
+  # Column names
+  gt_col:   "damage_binary_gnd"   # ground-truth binary column
+  id_col:   "id"                  # building ID column
+  area_col: "area_m2"             # building area column
+
+  # Threshold for the AREA fraction of a building that must be damaged
+  # before the building is called "Damaged" (0.0 – 1.0)
+  area_frac_threshold: 0.30
+
+  # Raster probability thresholds to sweep
+  # Format: [start, stop, step]  — all inclusive, rounded to 2 d.p.
+  thresholds:
+    start: 0.0
+    stop:  1.0
+    step:  0.02
+
+  # Raster band to read
+  band: 1
+
+  # Output CSV file for sweep metrics
+  out_csv: "./threshold_sweep_metrics.csv"
+
+# -----------------------------------------------------------------------------
+# STEP 3  –  Plotting
+# -----------------------------------------------------------------------------
+step3:
+  # CSV produced by Step 2.
+  # If step2 is disabled, point this at a pre-existing file.
+  input_csv: "./threshold_sweep_metrics.csv"
+
+  # Directory where PNG plots will be saved
+  out_dir: "./plots"
+
+  # X-axis and Y-axis limits for threshold plots  [min, max]
+  xlim: [0.2,1] 
+#[0.3, 1.0]
+  ylim: [0.3, 0.85]
+#[0.4, 0.9]
+
+  # Color mapping: substring of raster filename → matplotlib color
+  # Any raster not matching a key gets color "red"
+  color_map:
+    geoisce: "maroon"
+    others/20250109.wprobs: "red"
+    mpy:     "coral"
+    GSLC:    "white"
+    60m:     "powderblue"
+    _4550:   "skyblue"
+    arcsec:  "deepskyblue"
+ 
