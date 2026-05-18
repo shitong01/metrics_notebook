@@ -104,6 +104,9 @@ step2:
   # Raster band to read
   band: 1
 
+  # Directory to cache per-raster overlap tables (GPKG + CSV). Leave unset to disable.
+  cache_dir: "./outputs/cache"
+
   # Output CSV file for sweep metrics
   out_csv: "./threshold_sweep_metrics.csv"
 

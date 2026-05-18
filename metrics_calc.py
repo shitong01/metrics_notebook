@@ -16,6 +16,7 @@ Steps (each can be toggled in the config file):
 """
 
 import argparse
+import hashlib
 import logging
 import os
 import sys
@@ -28,6 +29,7 @@ import rasterio
 import yaml
 from rasterio.features import shapes
 from rasterio.vrt import WarpedVRT
+from rasterio.windows import from_bounds, Window
 from shapely.geometry import shape
 
 # ---------------------------------------------------------------------------
@@ -50,6 +52,16 @@ def load_config(config_path: str) -> dict:
         cfg = yaml.safe_load(f)
     log.info("Loaded config from %s", config_path)
     return cfg
+
+
+def _raster_cache_key(raster_path: str, chunk: int = 1 << 20) -> str:
+    """Content-based cache key: sha256 of file size + first chunk of bytes."""
+    p = Path(raster_path)
+    h = hashlib.sha256()
+    h.update(str(p.stat().st_size).encode())
+    with open(p, "rb") as f:
+        h.update(f.read(chunk))
+    return h.hexdigest()[:16]
 
 
 # ===========================================================================
@@ -187,8 +199,36 @@ def _metrics_from_confusion(TP, FP, FN, TN):
     return acc, f1, csi
 
 
-def _compute_pixel_overlap_table(bld_gdf, raster_path: str, id_col: str, area_col: str, band: int = 1):
-    """Intersect raster pixels with building polygons, returning an overlap table."""
+def _compute_pixel_overlap_table(
+    bld_gdf, raster_path: str, id_col: str, area_col: str,
+    band: int = 1, cache_dir: str = None
+):
+    """
+    Intersect raster pixels with building polygons and return an overlap table.
+
+    Uses a windowed read (cropped to building extent) to avoid loading the
+    full raster into memory.  Results are cached to ``cache_dir`` to avoid
+    re-computation when the script is re-run with the same raster.
+
+    Returns
+    -------
+    bld_m : GeoDataFrame  — buildings re-projected to UTM with area_m2
+    ov    : DataFrame     — columns [id_col, "value", "overlap_m2"]
+    """
+    if cache_dir:
+        raster_key = _raster_cache_key(raster_path)
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        bld_m_file = Path(cache_dir) / f"{raster_key}_bldm.gpkg"
+        ov_file    = Path(cache_dir) / f"{raster_key}_ov.csv"
+
+        if bld_m_file.exists() and ov_file.exists():
+            log.info("    Loading cached overlap table from %s", cache_dir)
+            bld_m = gpd.read_file(bld_m_file)
+            ov    = pd.read_csv(ov_file)
+            return bld_m, ov
+
+    log.info("    Computing pixel-overlap table for %s", raster_path)
+
     utm_crs = bld_gdf.estimate_utm_crs()
     bld_m = bld_gdf.to_crs(utm_crs).copy()
     bld_m["geometry"] = bld_m.geometry.buffer(0)
@@ -196,17 +236,31 @@ def _compute_pixel_overlap_table(bld_gdf, raster_path: str, id_col: str, area_co
 
     with rasterio.open(raster_path) as src:
         with WarpedVRT(src, crs=utm_crs) as src_m:
-            arr = src_m.read(band).astype(np.float32)
             nodata = src_m.nodata
+
+            minx, miny, maxx, maxy = bld_m.total_bounds
+            log.info("    Building extent (UTM): [%.1f, %.1f, %.1f, %.1f]",
+                     minx, miny, maxx, maxy)
+            log.info("    Raster extent (UTM):   %s", src_m.bounds)
+
+            win = from_bounds(minx, miny, maxx, maxy, transform=src_m.transform)
+            full = Window(0, 0, src_m.width, src_m.height)
+            win = win.intersection(full)
+
+            arr = src_m.read(band, window=win, out_dtype="float32")
+            win_transform = src_m.window_transform(win)
+
             valid = np.isfinite(arr)
             if nodata is not None:
                 valid &= (arr != nodata)
 
             geoms, vals = [], []
-            for geom, val in shapes(arr, mask=valid, transform=src_m.transform):
+            for geom, val in shapes(arr, mask=valid.astype(np.uint8),
+                                    transform=win_transform):
                 geoms.append(shape(geom))
                 vals.append(float(val))
 
+    log.info("    Polygonized %d pixel patches; running overlay...", len(geoms))
     grid = gpd.GeoDataFrame({"value": vals, "geometry": geoms}, crs=utm_crs)
 
     inter = gpd.overlay(
@@ -216,8 +270,13 @@ def _compute_pixel_overlap_table(bld_gdf, raster_path: str, id_col: str, area_co
         keep_geom_type=True,
     )
     inter["overlap_m2"] = inter.geometry.area
-
     ov = inter[[id_col, "value", "overlap_m2"]].copy()
+
+    if cache_dir:
+        bld_m.to_file(str(bld_m_file), driver="GPKG")
+        ov.to_csv(str(ov_file), index=False)
+        log.info("    Cached overlap table to %s", cache_dir)
+
     return bld_m, ov
 
 
@@ -291,6 +350,7 @@ def run_step2(cfg: dict) -> None:
     area_col          = s["area_col"]
     area_frac_thresh  = float(s["area_frac_threshold"])
     band              = int(s.get("band", 1))
+    cache_dir         = s.get("cache_dir")
     raster_paths      = s["target_raster_paths"]
 
     t_cfg = s["thresholds"]
@@ -309,7 +369,7 @@ def run_step2(cfg: dict) -> None:
     for i, rp in enumerate(raster_paths, 1):
         log.info("  [%d/%d] Processing: %s", i, len(raster_paths), rp)
         try:
-            bld_m, ov = _compute_pixel_overlap_table(bld_out, rp, id_col, area_col, band)
+            bld_m, ov = _compute_pixel_overlap_table(bld_out, rp, id_col, area_col, band, cache_dir)
             df_metrics = _sweep_thresholds(bld_m, ov, thresholds, gt_col, id_col, area_col, area_frac_thresh)
             df_metrics["raster"] = rp
             results.append(df_metrics)
